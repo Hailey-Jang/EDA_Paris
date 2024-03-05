@@ -1,0 +1,171 @@
+---
+title: "Paris EDA"
+author: "Haiely Jang"
+format: pdf
+date: today
+date-format: long
+thanks: "Code and data are available at: https://github.com/Hailey-Jang/EDA_Paris.git"
+number-sections: true
+bibliography: references.bib
+---
+# Introduction
+Exploratory Data Analysis (EDA) involves delving into datasets to uncover underlying patterns or insights, with no fixed methodology but a shared objective of understanding the potential narratives hidden in data. This document details an analysis of Paris's Airbnb listings as of December 12, 2023, aiming to reveal trends in pricing and to investigate correlations between listing features, such as the impact of a host's superhost status on pricing, and to address and strategize around missing data.
+
+The analysis draws inspiration from methodologies outlined in the "Telling Stories with Data" text, specifically Chapter 11.5, and utilizes the data provided by Inside Airbnb, with a focus on selected variables deemed most relevant for the investigation.
+
+# Data {#sec-data}
+This report uses statistically programming language R [@citeR] to analyze the data on Paris Airbnb situations. 
+
+The report is going to get the dataset from Inside Airbnb [@citeair], then explore the data features and plot the graphs to illustrate the dataset.
+
+Used Rstudio and R [@citeR] to create this with the help of arrow[@arr], mice [@mice], naniar [@nan], tidyverse [@tidy], and modelsummary [@sum]. 
+
+```{r}
+#| warning: false
+#| echo: false
+
+# install packages and load library
+install.packages("arrow")
+install.packages("mice")
+install.packages("naniar")
+install.packages("modelsummary")
+install.packages("readr")
+install.packages("janitor")
+install.packages("tidyverse")
+
+library(arrow)
+library(readr)
+library(janitor)
+library(lubridate)
+library(mice)
+library(modelsummary)
+library(naniar)
+library(tidyverse)
+library(ggplot2)
+```
+
+I utilized data sourced from Inside Airbnb, specifically tagged @airbnbdata. My focus was on Paris, France, where I procured the detailed listings dataset dated December 12, 2023.
+
+```{r}
+#| message: FALSE
+#| echo: FALSE
+#| warning: FALSE
+# get the data from InsideAirbnb website
+url <-
+  paste0(
+    "http://data.insideairbnb.com/france/ile-de-france/paris/2023-12-12/data/listings.csv.gz"
+  )
+
+airbnb_data <-
+  read_csv(
+    file = url,
+    guess_max = 20000
+  )
+
+write_csv(airbnb_data, "airbnb_data.csv")
+```
+
+This dataset comprises numerous variables, but for my exploratory data analysis, I chose to concentrate on 12 specific ones: host_id, host_response_time, host_is_superhost, host_total_listings_count, neighbourhood_cleansed, bathrooms, bedrooms, price, number_of_reviews, review_scores_rating, review_scores_accuracy, and review_scores_value. To refine the dataset to include only these selected variables, I employed @janitor along with the select function, streamlining my data preparation phase.
+
+```{r}
+#| warning: false
+airbnb_data_selected <-
+  airbnb_data |>
+  select(
+    host_id,
+    host_response_time,
+    host_is_superhost,
+    host_total_listings_count,
+    neighbourhood_cleansed,
+    bathrooms,
+    bedrooms,
+    price,
+    number_of_reviews,
+    review_scores_rating,
+    review_scores_accuracy,
+    review_scores_value
+  )
+
+write_parquet(
+  x = airbnb_data_selected, 
+  sink = 
+    "2023-12-12-paris-airbnblistings-select_variables.parquet"
+  )
+
+rm(airbnb_data)
+```
+
+# Data Analysis {#sec-eda}
+
+## Prices Per Night
+
+For potential visitors to Paris, understanding accommodation costs is crucial. My initial analysis spotlights the price distribution for Airbnb stays in Paris, referenced at @distn_prices.
+
+```{r}
+#| message: FALSE
+#| echo: FALSE
+#| warning: FALSE
+#| label: fig-distn_prices
+#| fig-cap: Distribution of Prices per Night 
+
+library(ggplot2)
+
+# Ensure the price column is numeric
+airbnb_data_selected$price <- as.numeric(as.character(airbnb_data_selected$price))
+
+# Generate the histogram
+ggplot(airbnb_data_selected, aes(x = price)) +
+  geom_histogram(binwidth = 10, fill = "blue", color = "black") + # Customize binwidth as needed
+  theme_minimal() +
+  labs(
+    title = "Distribution of Airbnb Prices per Night in Paris",
+    x = "Price per night (€)",
+    y = "Frequency"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  )
+```
+
+
+## Analysis of High-Value Listings
+
+This segment explores listings priced above $1000, utilizing a logarithmic scale for better visualization and understanding of this high-price segment.
+
+```{r}
+#| message: FALSE
+#| echo: FALSE
+#| warning: FALSE
+#| label: fig-high_price_histogram
+#| fig-cap: "Histogram of Airbnb prices over $1000 per night in Paris."
+
+library(ggplot2)
+
+# Ensure the price column is numeric
+airbnb_data_selected$price <- as.numeric(as.character(airbnb_data_selected$price))
+
+# Filter the data to include only prices over $1000
+high_price_data <- airbnb_data_selected[airbnb_data_selected$price > 1000, ]
+
+# Generate the histogram with log scale for y-axis
+ggplot(high_price_data, aes(x = price)) +
+  geom_histogram(binwidth = 50, fill = "coral", color = "black") + # Adjust binwidth as needed
+  scale_y_log10() +
+  theme_minimal() +
+  labs(
+    title = "Distribution of Airbnb Prices Over $1000 per Night in Paris",
+    x = "Price per night ($)",
+    y = "Count (log scale)"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  )
+```
+
+## Superhosts Versus Non-Superhosts f
+
+Superhosts represent the seasoned veterans among Airbnb hosts, as highlighted in @tellingstorieswithdata. My exploratory data analysis aims to uncover broad trends in the pricing and review scores, comparing these metrics between superhosts and those without superhost status.
